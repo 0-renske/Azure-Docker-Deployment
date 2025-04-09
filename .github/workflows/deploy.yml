@@ -3,11 +3,11 @@ name: Deploy Next.js to Azure
 on:
   push:
     branches:
-      - main # Trigger the pipeline when pushing to the main branch
+      - main 
 
 jobs:
   build:
-    runs-on: ubuntu-latest # The GitHub runner
+    runs-on: ubuntu-latest
 
     steps:
     - name: Checkout code
