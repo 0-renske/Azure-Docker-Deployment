@@ -1,4 +1,4 @@
-name: Deploy Next.js to Azure
+name: Build and Deploy to Azure Web App
 
 on:
   push:
@@ -10,17 +10,23 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v3
 
-      - uses: actions/setup-node@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
         with:
-          node-version: '16'
+          node-version: '18'
 
-      - run: npm install
-      - run: npm run build && npx next export
+      - name: Install dependencies
+        run: npm install
 
-      - uses: azure/webapps-deploy@v2
+      - name: Build app
+        run: npm run build
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v2
         with:
-          app-name: AzureWebApp-1
+          app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-          package: '.'
+          package: .
