@@ -1,12 +1,11 @@
 {
-  "name": "my-app",
+  "name": "my-nextjs-azure-app",
   "version": "1.0.0",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "node index.js"
   },
-  
   "dependencies": {
     "express": "^4.17.1",
     "next": "^13.0.0",
