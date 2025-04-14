@@ -29,4 +29,4 @@ jobs:
         with:
           app-name: AzureWebApp-1
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-          package: .
+          package: ./build
