@@ -6,7 +6,7 @@
     "build": "next build && next export",
     "start": "serve out"
   },
-{
+  
   "dependencies": {
     "express": "^4.17.1",
     "next": "^13.0.0",
