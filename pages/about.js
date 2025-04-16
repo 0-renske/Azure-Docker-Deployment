@@ -14,7 +14,7 @@ export default function About() {
       <section style={{ marginTop: '20px' }}>
         <h2>Our Core Values</h2>
         <ul>
-          <li><strong>Innovation:</strong> We're always pushing the boundaries to create cutting-edge solutions.</li>
+          <li><strong>Innovation:</strong> We're always pushing the boundaries to create cutting-edge solutions. TEST</li>
           <li><strong>Quality:</strong> We ensure that our products meet the highest standards of quality.</li>
           <li><strong>Customer Focus:</strong> We listen to our customers and build solutions that cater to their needs.</li>
         </ul>
