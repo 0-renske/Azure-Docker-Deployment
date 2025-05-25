@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { auth, db } from './firebase';
+import { auth, db } from '../lib/firebase';
 import { getFirestore, collection, query, where, orderBy, onSnapshot, addDoc } from 'firebase/firestore';
 
 export default function ExecutionTracker() {
