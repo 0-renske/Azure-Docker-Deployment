@@ -2,7 +2,7 @@ import { useRouter } from "next/router";
 import { useState } from "react";
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { getFirestore, doc, getDoc } from "firebase/firestore";
-import { auth, db } from './firebase';
+import { auth, db } from '../lib/firebase';
 
 export default function Login() {
   const [email, setEmail] = useState('');
