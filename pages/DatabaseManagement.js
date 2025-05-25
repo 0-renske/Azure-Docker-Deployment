@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { onAuthStateChanged } from 'firebase/auth';
 import { collection, addDoc, query, where, orderBy, onSnapshot } from 'firebase/firestore';
-import { auth, db } from './firebase'; // Same path as Dashboard - same directory
+import { auth, db } from '../lib/firebase'; // Same path as Dashboard - same directory
 
 export default function DatabaseManagement() {
   const [user, setUser] = useState(null);
