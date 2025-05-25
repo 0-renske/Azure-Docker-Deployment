@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from './firebase';
+import { auth } from '../lib/firebase';
 import DatabaseManagement from './DatabaseManagement';
 import Logout from './logout';
 
