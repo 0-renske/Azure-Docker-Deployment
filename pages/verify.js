@@ -1,4 +1,5 @@
-
+import React, { useState, useEffect } from 'react';
+  
 export default function VerifyEmail() {
   const [verificationCode, setVerificationCode] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
