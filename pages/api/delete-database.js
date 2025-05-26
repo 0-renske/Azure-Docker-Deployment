@@ -1,23 +1,17 @@
-// /api/delete-database.js
 
-// API configuration - you'll need to provide the delete endpoint
-const DELETE_API_URL = 'https://v92qgjfo7l.execute-api.eu-central-1.amazonaws.com/prod/delete-database'; // Update this URL
+const DELETE_API_URL = 'https://v92qgjfo7l.execute-api.eu-central-1.amazonaws.com/prod/delete-database';
 const API_KEY = 'XjUWxEyUER6u3s8jdmZlz6B6EKa1T0Yra2SWQgo9';
 
-// Simple token validation (since we don't have Firebase Admin)
+
 function validateAuthToken(req) {
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) {
     throw new Error('No authentication token provided');
   }
-  
-  // For now, we'll trust the token exists and rely on client-side validation
-  // In production, you'd want to verify this token with Firebase Auth REST API
   return true;
 }
 
 export default async function handler(req, res) {
-  // Only allow DELETE requests
   if (req.method !== 'DELETE') {
     return res.status(405).json({ 
       success: false, 
@@ -26,7 +20,7 @@ export default async function handler(req, res) {
   }
   
   try {
-    // Basic auth validation (without Firebase Admin)
+
     validateAuthToken(req);
     
     const { databaseId, containerName, userId, engine } = req.body;
@@ -57,7 +51,6 @@ export default async function handler(req, res) {
 
     console.log('Delete API Payload:', JSON.stringify(deletePayload, null, 2));
 
-    // Call the external delete API
     const response = await fetch(DELETE_API_URL, {
       method: 'DELETE',
       headers: {
@@ -79,7 +72,6 @@ export default async function handler(req, res) {
     console.log('Delete API result:', result);
 
     // TODO: Update Firestore to mark database as deleted/deleting
-    // Since we don't have Firebase Admin, the frontend will handle Firestore updates
     
     res.status(200).json({
       success: true,
