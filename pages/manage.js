@@ -8,7 +8,7 @@ import Logout from './logout';
 export default function Dashboard() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('database'); // Default to database
+  const [activeTab, setActiveTab] = useState('database'); 
   const router = useRouter();
 
   useEffect(() => {
