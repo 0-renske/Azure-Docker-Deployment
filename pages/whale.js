@@ -1,5 +1,12 @@
+import { useRouter } from 'next/router';
 
 export default function Whale() {
+  const router = useRouter();
+
+  const handleChooseWhale = () => {
+    router.push('/dashboard');
+  };
+
   return (
     <div className="bg-blue-50 border border-blue-300 rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
       <div className="flex justify-between items-center mb-4">
@@ -49,7 +56,10 @@ export default function Whale() {
           <span className="text-gray-600">Dedicated account manager</span>
         </li>
       </ul>
-      <button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition-colors">
+      <button 
+        onClick={handleChooseWhale}
+        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition-colors"
+      >
         Choose Whale
       </button>
     </div>
