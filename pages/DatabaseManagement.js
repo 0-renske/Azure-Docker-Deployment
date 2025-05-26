@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { onAuthStateChanged } from 'firebase/auth';
 import { collection, addDoc, query, where, orderBy, onSnapshot } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase'; // Same path as Dashboard - same directory
+import { auth, db } from '../lib/firebase'; 
 
 export default function DatabaseManagement() {
   const [user, setUser] = useState(null);
@@ -13,7 +13,7 @@ export default function DatabaseManagement() {
   
   // Form state - Updated to include vector databases
   const [formData, setFormData] = useState({
-    engine: 'Postgres', // Fixed spelling
+    engine: 'Postgres', 
     dbName: '',
     dbPassword: '',
     storage: 20,
@@ -39,9 +39,8 @@ export default function DatabaseManagement() {
     return () => unsubscribe();
   }, [router]);
 
-  // Listen to user's databases - only if user exists
   useEffect(() => {
-    if (!user?.uid) return; 
+    if (!user?.uid) return; // Add null check here
 
     const databasesQuery = query(
       collection(db, 'user_databases'),
@@ -57,13 +56,12 @@ export default function DatabaseManagement() {
       setDatabases(databaseList);
     }, (error) => {
       console.error('Error listening to databases:', error);
-      setDatabases([]); 
+      setDatabases([]); // Set empty array on error
     });
 
     return () => unsubscribe();
-  }, [user?.uid]); 
+  }, [user?.uid]);
 
-  // Handle form input changes
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({
@@ -90,6 +88,12 @@ export default function DatabaseManagement() {
     }
     
     // Vector database validations
+    if (['Weaviate', 'Chroma'].includes(formData.engine) && formData.dbPassword.length < 8) {
+      setError('Password must be at least 8 characters');
+      return false;
+    }
+    
+    // Pinecone validations
     if (formData.engine === 'Pinecone' && !formData.apiKey) {
       setError('API Key is required for Pinecone');
       return false;
@@ -171,6 +175,8 @@ export default function DatabaseManagement() {
         storage: formData.storage,
         region: formData.region,
         executionId: result.executionId,
+        deploymentId: result.deploymentId,
+        containerName: result.containerName, // Save container name for status checking
         status: 'CREATING',
         createdAt: new Date().toISOString(),
       });
@@ -197,7 +203,7 @@ export default function DatabaseManagement() {
 
   // Check database status
   const checkDatabaseStatus = async (database) => {
-    if (!database?.executionId || !user?.uid) { // Use optional chaining
+    if (!database?.executionId || !user?.uid) { 
       console.error('Missing required data for status check');
       alert('Cannot check status: missing required information');
       return;
@@ -220,7 +226,8 @@ export default function DatabaseManagement() {
           executionId: database.executionId,
           databaseId: database.id || '',
           userId: user.uid,
-          engine: database.engine || '', // Pass engine for connection info parsing
+          engine: database.engine || '',
+          containerName: database.containerName || `${database.engine?.toLowerCase()}-${database.dbName}-${user.uid.substring(0, 8)}`, // Include container name
         }),
       });
 
@@ -239,14 +246,138 @@ export default function DatabaseManagement() {
       
       // Show user-friendly status message
       if (statusData.userFriendlyStatus) {
-        const message = `Database Status: ${statusData.userFriendlyStatus}${statusData.estimatedTimeRemaining ? ' - ' + statusData.estimatedTimeRemaining : ''}`;
-        alert(message);
+        const message = `Database Status: ${statusData.userFriendlyStatus}`;
+        const details = statusData.estimatedTimeRemaining ? `\n${statusData.estimatedTimeRemaining}` : '';
+        const source = statusData.statusSource ? `\n(Source: ${statusData.statusSource})` : '';
+        alert(message + details + source);
       } else {
-        alert(`Database Status: ${statusData.status || 'Unknown'}`);
+        alert(`Database Status: ${statusData.status || 'Creating'}`);
       }
     } catch (error) {
       console.error('Error checking database status:', error);
       alert(`Failed to check database status: ${error.message}`);
+    }
+  };
+
+  const handleDeleteDatabase = async (database) => {
+    // Confirm deletion
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete "${database?.dbName || 'this database'}"?\n\nThis action cannot be undone and will permanently delete all data.`
+    );
+    
+    if (!confirmDelete) {
+      return;
+    }
+
+    try {
+      const idToken = await user.getIdToken();
+      
+      if (!idToken) {
+        throw new Error('Failed to get authentication token');
+      }
+
+      // First, update Firestore to mark as deleting
+      console.log('Marking database as deleting in Firestore...');
+      await updateDoc(doc(db, 'user_databases', database.id), {
+        status: 'DELETING',
+        deletionStarted: new Date().toISOString(),
+      });
+      
+      console.log('Calling delete API...');
+      const response = await fetch('/api/delete-database', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          databaseId: database.id,
+          containerName: database.containerName || `${database.engine?.toLowerCase()}-${database.dbName}-${user.uid.substring(0, 8)}`,
+          userId: user.uid,
+          engine: database.engine,
+        }),
+      });
+
+      if (!response.ok) {
+        // Revert status if API call failed
+        console.log('API call failed, reverting status...');
+        await updateDoc(doc(db, 'user_databases', database.id), {
+          status: database.status, // Revert to previous status
+          deletionError: new Date().toISOString(),
+        });
+        
+        const errorData = await response.json().catch(() => ({ message: 'Unknown error occurred' }));
+        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('Database deletion result:', result);
+      
+      if (result.success) {
+        if (result.softDelete) {
+          // If it's a soft delete (API not available), remove from Firestore immediately
+          console.log('Soft delete - removing from Firestore immediately');
+          await deleteDoc(doc(db, 'user_databases', database.id));
+          alert(`Database "${database.dbName}" removed successfully!`);
+        } else {
+          // Update Firestore with deletion info for real deletion
+          console.log('Real delete - updating Firestore with deletion tracking');
+          await updateDoc(doc(db, 'user_databases', database.id), {
+            status: 'DELETING',
+            deletionId: result.deletionId,
+            deletionStarted: new Date().toISOString(),
+          });
+          
+          // Set a timer to check for completion and remove from Firestore
+          // In a real app, you'd have a webhook or polling system
+          setTimeout(async () => {
+            try {
+              console.log('Auto-removing deleted database from Firestore after delay...');
+              await deleteDoc(doc(db, 'user_databases', database.id));
+            } catch (cleanupError) {
+              console.warn('Could not auto-cleanup deleted database:', cleanupError);
+            }
+          }, 30000); // Remove after 30 seconds
+          
+          alert(`Database "${database.dbName}" deletion started successfully!`);
+        }
+      } else {
+        throw new Error(result.message || 'Deletion failed');
+      }
+      
+    } catch (error) {
+      console.error('Error deleting database:', error);
+      alert(`Failed to delete database: ${error.message}`);
+      
+      // Try to revert the status in case of error
+      try {
+        await updateDoc(doc(db, 'user_databases', database.id), {
+          status: database.status,
+          deletionError: error.message,
+          deletionErrorTime: new Date().toISOString(),
+        });
+      } catch (revertError) {
+        console.warn('Could not revert database status:', revertError);
+      }
+    }
+  };
+
+  // Add a function to manually remove a database record from Firestore
+  const handleRemoveRecord = async (database) => {
+    const confirmRemove = window.confirm(
+      `Remove "${database?.dbName || 'this database'}" from your list?\n\nThis will only remove the record from your dashboard. If the database still exists, you may need to delete it manually.`
+    );
+    
+    if (!confirmRemove) {
+      return;
+    }
+
+    try {
+      await deleteDoc(doc(db, 'user_databases', database.id));
+      alert(`Record for "${database.dbName}" removed from your dashboard.`);
+    } catch (error) {
+      console.error('Error removing database record:', error);
+      alert(`Failed to remove record: ${error.message}`);
     }
   };
 
@@ -493,6 +624,7 @@ export default function DatabaseManagement() {
                   <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
                     database?.status === 'CREATING' ? 'bg-yellow-100 text-yellow-800' :
                     database?.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
+                    database?.status === 'DELETING' ? 'bg-orange-100 text-orange-800' :
                     database?.status === 'FAILED' ? 'bg-red-100 text-red-800' :
                     'bg-gray-100 text-gray-800'
                   }`}>
@@ -507,15 +639,66 @@ export default function DatabaseManagement() {
                   </div>
                 )}
 
-                {database?.status === 'CREATING' && (
-                  <button
-                    onClick={() => checkDatabaseStatus(database)}
-                    className="px-4 py-2 bg-blue-500 text-white text-sm rounded hover:bg-blue-600"
-                    disabled={!database?.executionId}
-                  >
-                    Check Status
-                  </button>
-                )}
+                <div className="flex gap-2 flex-wrap">
+                  {database?.status === 'CREATING' && (
+                    <button
+                      onClick={() => checkDatabaseStatus(database)}
+                      className="px-3 py-2 bg-blue-500 text-white text-sm rounded hover:bg-blue-600"
+                      disabled={!database?.executionId}
+                    >
+                      Check Status
+                    </button>
+                  )}
+
+                  {database?.status === 'COMPLETED' && (
+                    <>
+                      <button
+                        onClick={() => handleDeleteDatabase(database)}
+                        className="px-3 py-2 bg-red-500 text-white text-sm rounded hover:bg-red-600"
+                      >
+                        Delete Database
+                      </button>
+                      <button
+                        onClick={() => handleRemoveRecord(database)}
+                        className="px-3 py-2 bg-gray-400 text-white text-sm rounded hover:bg-gray-500"
+                      >
+                        Remove Record
+                      </button>
+                    </>
+                  )}
+
+                  {database?.status === 'DELETING' && (
+                    <>
+                      <div className="px-3 py-2 bg-orange-100 text-orange-800 text-sm rounded">
+                        Deleting...
+                      </div>
+                      <button
+                        onClick={() => handleRemoveRecord(database)}
+                        className="px-3 py-2 bg-gray-400 text-white text-sm rounded hover:bg-gray-500"
+                        title="Remove from dashboard if deletion is stuck"
+                      >
+                        Force Remove
+                      </button>
+                    </>
+                  )}
+
+                  {database?.status === 'FAILED' && (
+                    <>
+                      <button
+                        onClick={() => handleDeleteDatabase(database)}
+                        className="px-3 py-2 bg-red-500 text-white text-sm rounded hover:bg-red-600"
+                      >
+                        Try Delete
+                      </button>
+                      <button
+                        onClick={() => handleRemoveRecord(database)}
+                        className="px-3 py-2 bg-gray-500 text-white text-sm rounded hover:bg-gray-600"
+                      >
+                        Remove Record
+                      </button>
+                    </>
+                  )}
+                </div>
 
                 {database?.connectionInfo && (
                   <div className="mt-3 p-3 bg-gray-50 rounded">

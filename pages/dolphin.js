@@ -4,7 +4,7 @@ export default function Dolphin() {
   const router = useRouter();
 
   const handleChooseDolphin = () => {
-    router.push('/dashboard');
+    router.push('/manage');
   };
 
   return (

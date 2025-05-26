@@ -1,20 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
-import { initializeApp } from 'firebase/app';
-
-const firebaseConfig = {
-  apiKey: "AIzaSyCQkmsPAJ0EVd1fOTcTIzEBtj197o1Rdlc",
-  authDomain: "authentication-215cb.firebaseapp.com",
-  projectId: "authentication-215cb",
-  storageBucket: "authentication-215cb.firebasestorage.app",
-  messagingSenderId: "988966492862",
-  appId: "1:988966492862:web:f8d4faddbfecc8f2c51cef",
-  measurementId: "G-Q485FWL12Y"
-};
-
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
+import { auth, db } from '../lib/firebase';
 
 export default function PDFManagement() {
   const [user, setUser] = useState(null);

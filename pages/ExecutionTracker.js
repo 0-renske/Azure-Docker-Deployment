@@ -54,7 +54,6 @@ export default function ExecutionTracker() {
       if (response.ok) {
         const statusData = await response.json();
         
-        // Update the execution in Firestore
         if (execution.status !== statusData.status) {
           await updateExecutionInFirestore(execution.id, statusData);
         }

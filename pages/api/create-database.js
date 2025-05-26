@@ -1,19 +1,16 @@
-// /api/create-database.js
 
-// External API configuration
-const EXTERNAL_API_URL = 'https://aofz0s8s39.execute-api.eu-central-1.amazonaws.com/alpha/execution';
+const EXTERNAL_API_URL = 'https://v92qgjfo7l.execute-api.eu-central-1.amazonaws.com/prod/deploy-database';
 const API_KEY = 'XjUWxEyUER6u3s8jdmZlz6B6EKa1T0Yra2SWQgo9';
-const STATE_MACHINE_ARN = 'arn:aws:states:eu-central-1:842702268167:stateMachine:DBCreation-statemachine';
 
-// Simple token validation (since we don't have Firebase Admin)
+const SUBNETS = ["subnet-069da970533284526", "subnet-0d959c80c14bd08a5"];
+const SECURITY_GROUPS = ["sg-01b735d961a022b68"];
+
 function validateAuthToken(req) {
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) {
     throw new Error('No authentication token provided');
   }
   
-  // For now, we'll trust the token exists and rely on client-side validation
-  // In production, you'd want to verify this token with Firebase Auth REST API
   return true;
 }
 
@@ -50,13 +47,13 @@ function validateEngineRequirements(engine, data) {
   const errors = [];
   
   switch (engine) {
-    case 'Postgres': // Fixed spelling
+    case 'Postgres': 
       if (!data.dbPassword || data.dbPassword.length < 8) {
         errors.push('PostgreSQL password must be at least 8 characters');
       }
       break;
       
-    case 'Pinecone': // Capitalized
+    case 'Pinecone': 
       if (!data.apiKey) {
         errors.push('Pinecone API key is required');
       }
@@ -65,9 +62,11 @@ function validateEngineRequirements(engine, data) {
       }
       break;
       
-    case 'Weaviate': // Capitalized
-    case 'Chroma':   // Capitalized
-      // These don't require additional validation for now
+    case 'Weaviate': 
+    case 'Chroma':   
+      if (!data.dbPassword || data.dbPassword.length < 8) {
+        errors.push('Password must be at least 8 characters');
+      }
       break;
       
     default:
@@ -77,77 +76,67 @@ function validateEngineRequirements(engine, data) {
   return errors;
 }
 
-// Create Step Function input based on database type
-function createStepFunctionInput(engine, data, userId, userEmail) {
-  const baseInput = {
-    userId,
-    userEmail,
-    databaseEngine: engine,
-    databaseName: data.dbName,
-    storage: data.storage,
-    region: data.region || 'us-east-1',
-    timestamp: new Date().toISOString(),
+// Create API payload for the new endpoint
+function createApiPayload(engine, data, userId, userEmail) {
+  const engineMapping = {
+    'Postgres': 'postgres',
+    'Weaviate': 'weaviate', 
+    'Chroma': 'chroma',
+    'Pinecone': 'pinecone'
   };
   
-  switch (engine) {
-    case 'Postgres': // Fixed spelling
-      return {
-        ...baseInput,
-        Engine: engine, // Keep original format for your Step Function
-        dbName: data.dbName,
-        dbPassword: data.dbPassword,
-        storage: data.storage,
-        databaseType: 'postgresql',
-        instanceClass: data.storage <= 50 ? 'db.t3.micro' : 'db.t3.small',
-        allocatedStorage: data.storage,
-        engineVersion: '15.4',
-      };
-      
-    case 'Weaviate': // Capitalized
-      return {
-        ...baseInput,
-        Engine: engine,
-        dbName: data.dbName,
-        storage: data.storage,
-        databaseType: 'weaviate',
-        containerImage: 'semitechnologies/weaviate:latest',
-        containerPort: 8080,
-        memory: data.storage <= 50 ? 1024 : 2048,
-        cpu: data.storage <= 50 ? 512 : 1024,
-      };
-      
-    case 'Chroma': // Capitalized
-      return {
-        ...baseInput,
-        Engine: engine,
-        dbName: data.dbName,
-        storage: data.storage,
-        databaseType: 'chroma',
-        containerImage: 'chromadb/chroma:latest',
-        containerPort: 8000,
-        memory: data.storage <= 50 ? 1024 : 2048,
-        cpu: data.storage <= 50 ? 512 : 1024,
-      };
-      
-    case 'Pinecone': // Capitalized
-      return {
-        ...baseInput,
-        Engine: engine,
-        dbName: data.dbName,
-        storage: data.storage,
-        databaseType: 'pinecone',
-        pineconeApiKey: data.apiKey,
-        pineconeEnvironment: data.environment,
-        indexDimension: 1536, // OpenAI embeddings dimension
-        indexMetric: 'cosine',
-        pods: 1,
-        replicas: 1,
-        podType: 'p1.x1',
-      };
-      
-    default:
-      throw new Error(`Unsupported engine: ${engine}`);
+  const databaseType = engineMapping[engine];
+  if (!databaseType) {
+    throw new Error(`Unsupported engine: ${engine}`);
   }
+  
+  // Clean and validate database name for container naming
+  const cleanDbName = data.dbName
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '-')  // Replace non-alphanumeric with hyphens
+    .replace(/-+/g, '-')         // Replace multiple hyphens with single
+    .replace(/^-|-$/g, '');      // Remove leading/trailing hyphens
+  
+  // Generate container name (must be valid container name format)
+  const userIdShort = userId.substring(0, 8).toLowerCase();
+  const containerName = `${databaseType}-${cleanDbName}-${userIdShort}`;
+  
+  // Validate container name length (Docker container names have limits)
+  if (containerName.length > 63) {
+    throw new Error('Container name too long. Please use a shorter database name.');
+  }
+  
+  console.log('Creating payload:', {
+    engine,
+    databaseType,
+    containerName,
+    cleanDbName,
+    originalDbName: data.dbName
+  });
+  
+  // For Pinecone, we might need different parameters
+  if (engine === 'Pinecone') {
+    return {
+      databaseType: databaseType,
+      containerName: containerName,
+      username: 'admin',
+      password: data.apiKey, // Use API key as password for Pinecone
+      subnets: SUBNETS,
+      securityGroups: SECURITY_GROUPS,
+      // Additional Pinecone-specific data
+      pineconeEnvironment: data.environment,
+      pineconeApiKey: data.apiKey
+    };
+  }
+  
+  return {
+    databaseType: databaseType,
+    containerName: containerName,
+    username: 'admin',
+    password: data.dbPassword,
+    subnets: SUBNETS,
+    securityGroups: SECURITY_GROUPS
+  };
 }
 
 export default async function handler(req, res) {
@@ -156,7 +145,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Basic auth validation (without Firebase Admin)
     validateAuthToken(req);
     
     const { 
@@ -205,42 +193,41 @@ export default async function handler(req, res) {
     }
 
     // Validate engine
-    const supportedEngines = ['Postgres', 'Weaviate', 'Chroma', 'Pinecone']; // Updated with correct naming
+    const supportedEngines = ['Postgres', 'Weaviate', 'Chroma', 'Pinecone']; 
     if (!supportedEngines.includes(engine)) {
       return res.status(400).json({ 
         message: `Invalid database engine. Supported engines: ${supportedEngines.join(', ')}` 
       });
     }
 
-    // Create Step Function input based on engine type
-    const stepFunctionInput = createStepFunctionInput(engine, req.body, userId, userEmail);
+    // Create API payload for the new endpoint
+    const apiPayload = createApiPayload(engine, req.body, userId, userEmail);
+    
+    // Log the payload for debugging
+    console.log('API Payload being sent:', JSON.stringify(apiPayload, null, 2));
 
-    // Prepare the payload for the external API
-    const payload = {
-      input: JSON.stringify(stepFunctionInput),
-      stateMachineArn: STATE_MACHINE_ARN
-    };
-
-    // Call the external API
-    const externalResponse = await fetch(EXTERNAL_API_URL, {
+    const response = await fetch(EXTERNAL_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': API_KEY,
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(apiPayload),
     });
 
-    if (!externalResponse.ok) {
-      const errorText = await externalResponse.text();
-      console.error('External API error:', errorText);
-      throw new Error(`External API failed: ${externalResponse.status} ${externalResponse.statusText}`);
+    console.log('API Response Status:', response.status);
+    console.log('API Response Headers:', response.headers);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('External API error response:', errorText);
+      throw new Error(`External API failed: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
-    const externalResult = await externalResponse.json();
+    const result = await response.json();
     
-    // Extract execution ID from the response
-    const executionId = externalResult.executionArn?.split(':').pop() || externalResult.executionId || externalResult.name;
+    // Extract deployment ID or use a generated one
+    const deploymentId = result.deploymentId || result.id || `deploy-${Date.now()}`;
 
     // Log the database creation request
     console.log('Database creation started:', {
@@ -248,18 +235,17 @@ export default async function handler(req, res) {
       userEmail,
       engine,
       dbName,
-      executionArn: externalResult.executionArn,
+      deploymentId,
       timestamp: new Date().toISOString(),
     });
 
     res.status(200).json({
       message: 'Database creation started successfully',
-      executionId: executionId,
-      executionArn: externalResult.executionArn,
-      status: 'STARTED',
-      dbName: dbName,
-      engine: engine,
-      storage: storage,
+      executionId: deploymentId, // Keep same field name for compatibility
+      deploymentId: deploymentId,
+      databaseEngine: engine,
+      databaseName: dbName,
+      containerName: apiPayload.containerName,
       estimatedCompletionTime: getEstimatedCompletionTime(engine),
     });
   } catch (error) {
@@ -280,11 +266,11 @@ export default async function handler(req, res) {
 // Helper function to estimate completion time based on database type
 function getEstimatedCompletionTime(engine) {
   const estimates = {
-    'Postgres': '5-10 minutes',  // Fixed spelling
-    'Weaviate': '3-5 minutes',   // Capitalized
-    'Chroma': '3-5 minutes',     // Capitalized
-    'Pinecone': '1-2 minutes',   // Capitalized
+    'Postgres': '3-5 minutes',   
+    'Weaviate': '2-4 minutes',   
+    'Chroma': '2-4 minutes',     
+    'Pinecone': '1-2 minutes',   
   };
   
-  return estimates[engine] || '5-10 minutes';
+  return estimates[engine] || '3-5 minutes';
 }

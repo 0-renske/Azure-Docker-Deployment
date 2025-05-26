@@ -4,7 +4,7 @@ export default function Whale() {
   const router = useRouter();
 
   const handleChooseWhale = () => {
-    router.push('/dashboard');
+    router.push('/manage');
   };
 
   return (

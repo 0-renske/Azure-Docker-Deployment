@@ -35,7 +35,7 @@ export default function Register(){
             await setDoc(doc(db, "users", user.uid), {
               username: username,
               email: email,
-              createdAt: new Date().toISOString(), // Using ISO string for better compatibility
+              createdAt: new Date().toISOString(), 
               uid: user.uid
             });
             

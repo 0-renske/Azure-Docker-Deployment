@@ -1,6 +1,4 @@
-// /api/check-database-status.js
 
-// External API configuration
 const EXTERNAL_API_BASE_URL = 'https://aofz0s8s39.execute-api.eu-central-1.amazonaws.com/alpha/execution';
 const API_KEY = 'XjUWxEyUER6u3s8jdmZlz6B6EKa1T0Yra2SWQgo9';
 
@@ -11,8 +9,7 @@ function validateAuthTokenForStatus(req) {
     throw new Error('No authentication token provided');
   }
   
-  // For now, we'll trust the token exists and rely on client-side validation
-  // In production, you'd want to verify this token with Firebase Auth REST API
+
   return true;
 }
 
@@ -24,17 +21,17 @@ function parseConnectionInfo(output, engine) {
     const parsedOutput = typeof output === 'string' ? JSON.parse(output) : output;
     
     switch (engine) {
-      case 'Postgres': // Fixed spelling
+      case 'Postgres': 
         return {
           host: parsedOutput.host || parsedOutput.endpoint,
           port: parsedOutput.port || 5432,
           database: parsedOutput.database || parsedOutput.dbName,
           username: parsedOutput.username || parsedOutput.user,
-          // Don't store password in connection info for security
+        
           connectionString: `postgresql://${parsedOutput.username}@${parsedOutput.host}:${parsedOutput.port || 5432}/${parsedOutput.database}`,
         };
         
-      case 'Weaviate': // Capitalized
+      case 'Weaviate': 
         return {
           url: parsedOutput.url || parsedOutput.endpoint,
           host: parsedOutput.host,
@@ -43,7 +40,7 @@ function parseConnectionInfo(output, engine) {
           apiKey: parsedOutput.apiKey,
         };
         
-      case 'Chroma': // Capitalized
+      case 'Chroma': 
         return {
           url: parsedOutput.url || parsedOutput.endpoint,
           host: parsedOutput.host,
@@ -51,7 +48,7 @@ function parseConnectionInfo(output, engine) {
           apiEndpoint: `${parsedOutput.url || parsedOutput.endpoint}/api/v1`,
         };
         
-      case 'Pinecone': // Capitalized
+      case 'Pinecone': 
         return {
           indexName: parsedOutput.indexName || parsedOutput.dbName,
           environment: parsedOutput.environment,
@@ -76,7 +73,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Basic auth validation (without Firebase Admin)
+  
     validateAuthTokenForStatus(req);
     
     const { executionId, databaseId, userId, engine } = req.body;
@@ -201,7 +198,7 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('Status check error:', error);
     
-    // Handle specific error types
+    
     if (error.message.includes('No authentication token provided')) {
       return res.status(401).json({ message: 'Authentication required' });
     }
@@ -217,7 +214,7 @@ export default async function handler(req, res) {
   }
 }
 
-// Helper function to estimate remaining time
+
 function getEstimatedTimeRemaining(status, startDate, engine) {
   if (!['RUNNING', 'CREATING'].includes(status) || !startDate) {
     return null;
@@ -225,13 +222,13 @@ function getEstimatedTimeRemaining(status, startDate, engine) {
   
   const started = new Date(startDate);
   const now = new Date();
-  const elapsed = Math.floor((now - started) / 1000 / 60); // minutes elapsed
+  const elapsed = Math.floor((now - started) / 1000 / 60); 
   
   const estimatedTotalTimes = {
-    'Postgres': 8, // Fixed spelling - minutes
-    'Weaviate': 4, // Capitalized
-    'Chroma': 4,   // Capitalized
-    'Pinecone': 2, // Capitalized
+    'Postgres': 8, 
+    'Weaviate': 4, 
+    'Chroma': 4,   
+    'Pinecone': 2, 
   };
   
   const totalTime = estimatedTotalTimes[engine] || 8;

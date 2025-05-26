@@ -3,7 +3,6 @@ import { useRouter } from 'next/router';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import DatabaseManagement from './DatabaseManagement';
-import Logout from './logout';
 
 export default function Dashboard() {
   const [user, setUser] = useState(null);
@@ -92,21 +91,15 @@ export default function Dashboard() {
               <span className="text-sm text-gray-600">
                 Welcome, {user?.email || 'User'}
               </span>
-              <Logout />
             </div>
           </div>
         </div>
       </nav>
 
-      {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         {activeTab === 'database' && <DatabaseManagement />}
-        
-        {/* Add future components here */}
-        {/* {activeTab === 'analytics' && <Analytics />} */}
       </main>
 
-      {/* Footer */}
       <footer className="bg-white border-t mt-auto">
         <div className="container mx-auto px-4 py-6 text-center text-gray-500 text-sm">
           <p>© {new Date().getFullYear()} Group66. Katchow :)</p>

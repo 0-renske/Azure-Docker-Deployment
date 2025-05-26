@@ -4,7 +4,7 @@ export default function Free() {
   const router = useRouter();
 
   const handleGetStarted = () => {
-    router.push('/dashboard');
+    router.push('/manage');
   };
 
   return (
