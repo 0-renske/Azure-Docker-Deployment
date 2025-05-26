@@ -41,7 +41,7 @@ export default function DatabaseManagement() {
 
   // Listen to user's databases - only if user exists
   useEffect(() => {
-    if (!user?.uid) return; // Add null check here
+    if (!user?.uid) return; 
 
     const databasesQuery = query(
       collection(db, 'user_databases'),
@@ -57,11 +57,11 @@ export default function DatabaseManagement() {
       setDatabases(databaseList);
     }, (error) => {
       console.error('Error listening to databases:', error);
-      setDatabases([]); // Set empty array on error
+      setDatabases([]); 
     });
 
     return () => unsubscribe();
-  }, [user?.uid]); // Use optional chaining here
+  }, [user?.uid]); 
 
   // Handle form input changes
   const handleInputChange = (e) => {
