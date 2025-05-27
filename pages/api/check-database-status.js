@@ -1,19 +1,15 @@
-
 const EXTERNAL_API_BASE_URL = 'https://aofz0s8s39.execute-api.eu-central-1.amazonaws.com/alpha/execution';
 const API_KEY = 'XjUWxEyUER6u3s8jdmZlz6B6EKa1T0Yra2SWQgo9';
 
-// Simple token validation (since we don't have Firebase Admin)
 function validateAuthTokenForStatus(req) {
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) {
     throw new Error('No authentication token provided');
   }
   
-
   return true;
 }
 
-// Parse connection info based on database engine
 function parseConnectionInfo(output, engine) {
   if (!output) return null;
   
@@ -27,7 +23,6 @@ function parseConnectionInfo(output, engine) {
           port: parsedOutput.port || 5432,
           database: parsedOutput.database || parsedOutput.dbName,
           username: parsedOutput.username || parsedOutput.user,
-        
           connectionString: `postgresql://${parsedOutput.username}@${parsedOutput.host}:${parsedOutput.port || 5432}/${parsedOutput.database}`,
         };
         
@@ -40,7 +35,7 @@ function parseConnectionInfo(output, engine) {
           apiKey: parsedOutput.apiKey,
         };
         
-      case 'Chroma': 
+      case 'Chroma':
         return {
           url: parsedOutput.url || parsedOutput.endpoint,
           host: parsedOutput.host,
@@ -73,7 +68,6 @@ export default async function handler(req, res) {
   }
 
   try {
-  
     validateAuthTokenForStatus(req);
     
     const { executionId, databaseId, userId, engine } = req.body;
@@ -86,7 +80,6 @@ export default async function handler(req, res) {
       return res.status(400).json({ message: 'User ID is required' });
     }
 
-    // Call the external API to get status
     const statusUrl = `${EXTERNAL_API_BASE_URL}/${executionId}`;
     const statusResponse = await fetch(statusUrl, {
       method: 'GET',
@@ -101,26 +94,23 @@ export default async function handler(req, res) {
       throw new Error(`Failed to get status: ${statusResponse.status} ${statusResponse.statusText}`);
     }
 
-    // Handle potentially malformed JSON
     let statusData;
     try {
       const responseText = await statusResponse.text();
-      console.log('Raw response:', responseText); // Debug log
+      console.log('Raw response:', responseText);
       
-      // Try to fix common JSON issues
       let cleanedResponse = responseText
-        .replace(/,\s*}/g, '}')           // Remove trailing commas before }
-        .replace(/,\s*]/g, ']')           // Remove trailing commas before ]
-        .replace(/:\s*,/g, ': null,')     // Replace empty values with null
-        .replace(/,\s*,/g, ',')           // Remove double commas
-        .replace(/,(\s*[}\]])/g, '$1');   // Remove trailing commas
+        .replace(/,\s*}/g, '}')          
+        .replace(/,\s*]/g, ']')           
+        .replace(/:\s*,/g, ': null,')     
+        .replace(/,\s*,/g, ',')           
+        .replace(/,(\s*[}\]])/g, '$1');   
       
       statusData = JSON.parse(cleanedResponse);
     } catch (parseError) {
       console.error('JSON parse error:', parseError);
       console.error('Response text:', await statusResponse.text());
       
-      // Return a basic response if JSON parsing fails
       statusData = {
         status: 'UNKNOWN',
         error: 'Failed to parse status response',
@@ -128,7 +118,6 @@ export default async function handler(req, res) {
       };
     }
     
-    // Parse connection information if available
     let connectionInfo = null;
     if (statusData.status === 'SUCCEEDED' && statusData.output && engine) {
       try {
@@ -139,7 +128,6 @@ export default async function handler(req, res) {
       }
     }
 
-    // Map the external API status to user-friendly status
     const statusMapping = {
       'SUCCEEDED': 'Completed',
       'FAILED': 'Failed',
@@ -153,16 +141,14 @@ export default async function handler(req, res) {
 
     const userFriendlyStatus = statusMapping[statusData.status] || statusData.status;
 
-    // Calculate progress percentage
     let progressPercentage = 0;
     if (statusData.status === 'SUCCEEDED') {
       progressPercentage = 100;
     } else if (statusData.status === 'RUNNING') {
-      // Estimate progress based on elapsed time
       if (statusData.startDate) {
         const started = new Date(statusData.startDate);
         const now = new Date();
-        const elapsed = Math.floor((now - started) / 1000 / 60); // minutes elapsed
+        const elapsed = Math.floor((now - started) / 1000 / 60);
         
         const estimatedTotalTimes = {
           'Postgress': 8,
@@ -174,7 +160,7 @@ export default async function handler(req, res) {
         const totalTime = estimatedTotalTimes[engine] || 8;
         progressPercentage = Math.min(90, Math.floor((elapsed / totalTime) * 100));
       } else {
-        progressPercentage = 25; // Default progress if no start date
+        progressPercentage = 25;
       }
     } else if (['FAILED', 'TIMED_OUT', 'ABORTED'].includes(statusData.status)) {
       progressPercentage = 0;
@@ -193,11 +179,10 @@ export default async function handler(req, res) {
       connectionInfo: connectionInfo,
       estimatedTimeRemaining: getEstimatedTimeRemaining(statusData.status, statusData.startDate, engine),
       lastChecked: new Date().toISOString(),
-      rawResponse: process.env.NODE_ENV === 'development' ? statusData : undefined, // Debug info
+      rawResponse: process.env.NODE_ENV === 'development' ? statusData : undefined, 
     });
   } catch (error) {
     console.error('Status check error:', error);
-    
     
     if (error.message.includes('No authentication token provided')) {
       return res.status(401).json({ message: 'Authentication required' });
@@ -214,7 +199,6 @@ export default async function handler(req, res) {
   }
 }
 
-
 function getEstimatedTimeRemaining(status, startDate, engine) {
   if (!['RUNNING', 'CREATING'].includes(status) || !startDate) {
     return null;
@@ -226,7 +210,7 @@ function getEstimatedTimeRemaining(status, startDate, engine) {
   
   const estimatedTotalTimes = {
     'Postgres': 8, 
-    'Weaviate': 4, 
+    'Weaviate': 4,
     'Chroma': 4,   
     'Pinecone': 2, 
   };

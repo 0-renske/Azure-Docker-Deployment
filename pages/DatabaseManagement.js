@@ -1,5 +1,3 @@
-// WORK ON THIS !
-
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -13,13 +11,11 @@ export default function DatabaseManagement() {
   const [databases, setDatabases] = useState([]);
   const [error, setError] = useState('');
   
-  // Form state - Updated to include vector databases
   const [formData, setFormData] = useState({
     engine: 'Postgres', 
     dbName: '',
     dbPassword: '',
     storage: 20,
-    // Vector DB specific fields
     apiKey: '',
     environment: '',
     region: 'us-east-1'
@@ -27,14 +23,13 @@ export default function DatabaseManagement() {
 
   const router = useRouter();
 
-  // Check authentication
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoading(false);
       
       if (!currentUser) {
-        router.replace('/login');
+        router.replace('/Group6');
       }
     });
 
@@ -42,7 +37,7 @@ export default function DatabaseManagement() {
   }, [router]);
 
   useEffect(() => {
-    if (!user?.uid) return; // Add null check here
+    if (!user?.uid) return;
 
     const databasesQuery = query(
       collection(db, 'user_databases'),
@@ -58,7 +53,7 @@ export default function DatabaseManagement() {
       setDatabases(databaseList);
     }, (error) => {
       console.error('Error listening to databases:', error);
-      setDatabases([]); // Set empty array on error
+      setDatabases([]);
     });
 
     return () => unsubscribe();
@@ -72,7 +67,6 @@ export default function DatabaseManagement() {
     }));
   };
 
-  // Validate form data - Updated for vector databases
   const validateForm = () => {
     if (formData.dbName.length < 4) {
       setError('Database name must be at least 4 characters');
@@ -83,19 +77,11 @@ export default function DatabaseManagement() {
       return false;
     }
     
-    // Traditional database validations
-    if (['Postgres'].includes(formData.engine) && formData.dbPassword.length < 8) {
+    if (['Postgres', 'Weaviate', 'Chroma'].includes(formData.engine) && formData.dbPassword.length < 8) {
       setError('Password must be at least 8 characters');
       return false;
     }
     
-    // Vector database validations
-    if (['Weaviate', 'Chroma'].includes(formData.engine) && formData.dbPassword.length < 8) {
-      setError('Password must be at least 8 characters');
-      return false;
-    }
-    
-    // Pinecone validations
     if (formData.engine === 'Pinecone' && !formData.apiKey) {
       setError('API Key is required for Pinecone');
       return false;
@@ -112,11 +98,10 @@ export default function DatabaseManagement() {
     return true;
   };
 
-  // Handle database creation
   const handleCreateDatabase = async (e) => {
     e.preventDefault();
     
-    if (!user?.uid || !user?.email) { // Use optional chaining
+    if (!user?.uid || !user?.email) {
       setError('You must be logged in to create databases');
       return;
     }
@@ -129,14 +114,12 @@ export default function DatabaseManagement() {
     setError('');
 
     try {
-      // Get user's ID token for authentication
       const idToken = await user.getIdToken();
       
       if (!idToken) {
         throw new Error('Failed to get authentication token');
       }
 
-      // Call your API to create the database
       const response = await fetch('/api/create-database', {
         method: 'POST',
         headers: {
@@ -146,9 +129,8 @@ export default function DatabaseManagement() {
         body: JSON.stringify({
           engine: formData.engine,
           dbName: formData.dbName,
-          dbPassword: formData.dbPassword || '', // Provide default for vector DBs
+          dbPassword: formData.dbPassword || '',
           storage: parseInt(formData.storage),
-          // Vector DB specific fields
           apiKey: formData.apiKey || '',
           environment: formData.environment || '',
           region: formData.region || 'us-east-1',
@@ -168,7 +150,6 @@ export default function DatabaseManagement() {
         throw new Error('Invalid response from server');
       }
 
-      // Save database creation record to Firestore
       await addDoc(collection(db, 'user_databases'), {
         userId: user.uid,
         userEmail: user.email,
@@ -178,14 +159,13 @@ export default function DatabaseManagement() {
         region: formData.region,
         executionId: result.executionId,
         deploymentId: result.deploymentId,
-        containerName: result.containerName, // Save container name for status checking
+        containerName: result.containerName,
         status: 'CREATING',
         createdAt: new Date().toISOString(),
       });
 
-      // Reset form
       setFormData({
-        engine: 'Postgress',
+        engine: 'Postgres',
         dbName: '',
         dbPassword: '',
         storage: 20,
@@ -203,7 +183,6 @@ export default function DatabaseManagement() {
     }
   };
 
-  // Check database status
   const checkDatabaseStatus = async (database) => {
     if (!database?.executionId || !user?.uid) { 
       console.error('Missing required data for status check');
@@ -245,8 +224,6 @@ export default function DatabaseManagement() {
       }
       
       console.log('Database status:', statusData);
-      
-      // Show user-friendly status message
       if (statusData.userFriendlyStatus) {
         const message = `Database Status: ${statusData.userFriendlyStatus}`;
         const details = statusData.estimatedTimeRemaining ? `\n${statusData.estimatedTimeRemaining}` : '';
@@ -262,7 +239,6 @@ export default function DatabaseManagement() {
   };
 
   const handleDeleteDatabase = async (database) => {
-    // Confirm deletion
     const confirmDelete = window.confirm(
       `Are you sure you want to delete "${database?.dbName || 'this database'}"?\n\nThis action cannot be undone and will permanently delete all data.`
     );
@@ -277,8 +253,6 @@ export default function DatabaseManagement() {
       if (!idToken) {
         throw new Error('Failed to get authentication token');
       }
-
-      // First, update Firestore to mark as deleting
       console.log('Marking database as deleting in Firestore...');
       await updateDoc(doc(db, 'user_databases', database.id), {
         status: 'DELETING',
@@ -301,10 +275,9 @@ export default function DatabaseManagement() {
       });
 
       if (!response.ok) {
-        // Revert status if API call failed
         console.log('API call failed, reverting status...');
         await updateDoc(doc(db, 'user_databases', database.id), {
-          status: database.status, // Revert to previous status
+          status: database.status,
           deletionError: new Date().toISOString(),
         });
         
@@ -317,21 +290,16 @@ export default function DatabaseManagement() {
       
       if (result.success) {
         if (result.softDelete) {
-          // If it's a soft delete (API not available), remove from Firestore immediately
           console.log('Soft delete - removing from Firestore immediately');
           await deleteDoc(doc(db, 'user_databases', database.id));
           alert(`Database "${database.dbName}" removed successfully!`);
         } else {
-          // Update Firestore with deletion info for real deletion
           console.log('Real delete - updating Firestore with deletion tracking');
           await updateDoc(doc(db, 'user_databases', database.id), {
             status: 'DELETING',
             deletionId: result.deletionId,
             deletionStarted: new Date().toISOString(),
           });
-          
-          // Set a timer to check for completion and remove from Firestore
-          // In a real app, you'd have a webhook or polling system
           setTimeout(async () => {
             try {
               console.log('Auto-removing deleted database from Firestore after delay...');
@@ -339,7 +307,7 @@ export default function DatabaseManagement() {
             } catch (cleanupError) {
               console.warn('Could not auto-cleanup deleted database:', cleanupError);
             }
-          }, 30000); // Remove after 30 seconds
+          }, 30000);
           
           alert(`Database "${database.dbName}" deletion started successfully!`);
         }
@@ -351,7 +319,6 @@ export default function DatabaseManagement() {
       console.error('Error deleting database:', error);
       alert(`Failed to delete database: ${error.message}`);
       
-      // Try to revert the status in case of error
       try {
         await updateDoc(doc(db, 'user_databases', database.id), {
           status: database.status,
@@ -364,7 +331,6 @@ export default function DatabaseManagement() {
     }
   };
 
-  // Add a function to manually remove a database record from Firestore
   const handleRemoveRecord = async (database) => {
     const confirmRemove = window.confirm(
       `Remove "${database?.dbName || 'this database'}" from your list?\n\nThis will only remove the record from your dashboard. If the database still exists, you may need to delete it manually.`
@@ -382,8 +348,6 @@ export default function DatabaseManagement() {
       alert(`Failed to remove record: ${error.message}`);
     }
   };
-
-  // Show loading spinner while checking authentication
   if (loading) {
     return (
       <div className="container mx-auto px-4 py-8 max-w-4xl">
@@ -393,8 +357,6 @@ export default function DatabaseManagement() {
       </div>
     );
   }
-
-  // If user is not authenticated
   if (!user) {
     return (
       <div className="container mx-auto px-4 py-8 max-w-4xl">
@@ -414,7 +376,6 @@ export default function DatabaseManagement() {
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl">
-      {/* User info header */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
         <p className="text-blue-800">
           <span className="font-semibold">Logged in as:</span> {user?.email || 'Loading...'}
@@ -422,13 +383,10 @@ export default function DatabaseManagement() {
       </div>
 
       <h1 className="text-2xl font-bold mb-6">Database Management</h1>
-
-      {/* Create Database Form */}
       <div className="bg-white shadow-md rounded-lg p-6 mb-6">
         <h2 className="text-xl font-semibold mb-4">Create New Database</h2>
         
         <form onSubmit={handleCreateDatabase} className="space-y-4">
-          {/* Database Engine */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Database Engine *
@@ -453,8 +411,6 @@ export default function DatabaseManagement() {
               Choose your preferred database technology
             </p>
           </div>
-
-          {/* Database Name */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               {formData.engine === 'Pinecone' ? 'Index Name *' : 'Database Name *'}
@@ -464,7 +420,7 @@ export default function DatabaseManagement() {
               name="dbName"
               value={formData.dbName}
               onChange={handleInputChange}
-              placeholder={`Enter ${formData.engine === 'pinecone' ? 'index' : 'database'} name (min 4 characters, no spaces)`}
+              placeholder={`Enter ${formData.engine === 'Pinecone' ? 'index' : 'database'} name (min 4 characters, no spaces)`}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               required
               minLength={4}
@@ -474,9 +430,7 @@ export default function DatabaseManagement() {
               Must be at least 4 characters and contain no spaces
             </p>
           </div>
-
-          {/* Database Password - Only for traditional databases */}
-          {['Postgres'].includes(formData.engine) && (
+          {formData.engine !== 'Pinecone' && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Database Password *
@@ -492,13 +446,13 @@ export default function DatabaseManagement() {
                 minLength={8}
               />
               <p className="text-xs text-gray-500 mt-1">
-                Must be at least 8 characters
+                Must be at least 8 characters - required for Step Function execution
               </p>
             </div>
           )}
 
           {/* API Key - Only for Pinecone */}
-          {formData.engine === 'pinecone' && (
+          {formData.engine === 'Pinecone' && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Pinecone API Key *
@@ -517,9 +471,7 @@ export default function DatabaseManagement() {
               </p>
             </div>
           )}
-
-          {/* Environment - Only for Pinecone */}
-          {formData.engine === 'pinecone' && (
+          {formData.engine === 'Pinecone' && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Environment *
@@ -535,30 +487,6 @@ export default function DatabaseManagement() {
               />
               <p className="text-xs text-gray-500 mt-1">
                 Your Pinecone environment name
-              </p>
-            </div>
-          )}
-
-          {/* Region - For vector databases */}
-          {['Weaviate', 'Chroma', 'Pinecone'].includes(formData.engine) && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Region *
-              </label>
-              <select
-                name="region"
-                value={formData.region}
-                onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                required
-              >
-                <option value="us-east-1">US East (N. Virginia)</option>
-                <option value="us-west-2">US West (Oregon)</option>
-                <option value="eu-west-1">Europe (Ireland)</option>
-                <option value="ap-southeast-1">Asia Pacific (Singapore)</option>
-              </select>
-              <p className="text-xs text-gray-500 mt-1">
-                Choose the deployment region
               </p>
             </div>
           )}
