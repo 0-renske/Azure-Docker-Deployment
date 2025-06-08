@@ -1,3 +1,4 @@
+import React from 'react';
 import { useState, useEffect } from 'react';
 import { auth, db } from '../lib/firebase';
 import { getFirestore, collection, query, where, orderBy, onSnapshot, addDoc } from 'firebase/firestore';
