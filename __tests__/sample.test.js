@@ -1,4 +1,6 @@
 import { render, screen } from '@testing-library/react';
+import React from 'react';
+
 
 describe('Sample test', () => {
   it('displays a heading', () => {
