@@ -13,23 +13,17 @@ export default function PDFManagement() {
   const [errorMessage, setErrorMessage] = useState('');
   const router = useRouter();
 
-  // Check authentication status
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoading(false);
-      
-      // If user is not authenticated, redirect to login
+    
       if (!currentUser) {
-        router.replace('/login');
+        router.replace('/Group6');
       }
     });
-
-    // Cleanup subscription on unmount
     return () => unsubscribe();
   }, [router]);
-
-  // Handle file selection
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (selectedFile && selectedFile.type === 'application/pdf') {
@@ -42,8 +36,6 @@ export default function PDFManagement() {
       setErrorMessage('Please select a valid PDF file.');
     }
   };
-
-  // Handle file upload and step function initiation
   const handleUpload = async (e) => {
     e.preventDefault();
     
@@ -61,19 +53,16 @@ export default function PDFManagement() {
     setErrorMessage('');
     
     try {
-      // Get the user's ID token for authentication
       const idToken = await user.getIdToken();
       
-      // Create a FormData object to send the file
       const formData = new FormData();
       formData.append('pdf', file);
-      formData.append('userId', user.uid); // Include user ID
+      formData.append('userId', user.uid); 
       
-      // First, upload the file to your API endpoint
       const uploadResponse = await fetch('/api/upload-pdf', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${idToken}`, // Include auth token
+          'Authorization': `Bearer ${idToken}`,
         },
         body: formData,
       });
@@ -85,19 +74,18 @@ export default function PDFManagement() {
       
       const uploadResult = await uploadResponse.json();
       
-      // Then, start the step function with the uploaded file's information
       const stepFunctionResponse = await fetch('/api/start-step-function', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${idToken}`, // Include auth token
+          'Authorization': `Bearer ${idToken}`, 
         },
         body: JSON.stringify({
           fileKey: uploadResult.fileKey,
           fileName: fileName,
           fileSize: file.size,
           contentType: file.type,
-          userId: user.uid, // Include user ID
+          userId: user.uid, 
         }),
       });
       
@@ -136,7 +124,6 @@ export default function PDFManagement() {
     }
   };
 
-  // Check the status of a running step function
   const checkStatus = async () => {
     if (!processingStatus || !processingStatus.executionArn || !user) {
       return;
@@ -187,8 +174,6 @@ export default function PDFManagement() {
       </div>
     );
   }
-
-  // If user is not authenticated, show message (though they should be redirected)
   if (!user) {
     return (
       <div className="container mx-auto px-4 py-8 max-w-2xl">
@@ -196,7 +181,7 @@ export default function PDFManagement() {
           <h2 className="text-xl font-semibold text-red-800 mb-2">Authentication Required</h2>
           <p className="text-red-600 mb-4">You must be logged in to access this page.</p>
           <button
-            onClick={() => router.push('/login')}
+            onClick={() => router.push('/Group6')}
             className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
           >
             Go to Login
@@ -208,7 +193,6 @@ export default function PDFManagement() {
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-2xl">
-      {/* User info header */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
         <p className="text-blue-800">
           <span className="font-semibold">Logged in as:</span> {user.email}
@@ -221,7 +205,6 @@ export default function PDFManagement() {
         <h2 className="text-xl font-semibold mb-4">Upload PDF Document</h2>
         
         <form onSubmit={handleUpload}>
-          {/* File upload section */}
           <div className="mb-4">
             <label 
               htmlFor="pdf-upload" 
@@ -243,15 +226,11 @@ export default function PDFManagement() {
               />
             </label>
           </div>
-          
-          {/* Error message */}
           {errorMessage && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-red-600 text-sm">
               {errorMessage}
             </div>
           )}
-          
-          {/* Upload button */}
           <button
             type="submit"
             disabled={!file || uploading}
@@ -261,8 +240,6 @@ export default function PDFManagement() {
           </button>
         </form>
       </div>
-      
-      {/* Processing status section */}
       {processingStatus && (
         <div className="bg-white shadow-md rounded-lg p-6">
           <h2 className="text-xl font-semibold mb-4">Processing Status</h2>
@@ -293,8 +270,7 @@ export default function PDFManagement() {
                 <span className="font-medium">Completed:</span>
                 <span>{new Date(processingStatus.stopTime).toLocaleString()}</span>
               </div>
-            )}
-            
+            )}      
             {processingStatus.status === 'RUNNING' && (
               <button
                 onClick={checkStatus}
@@ -302,8 +278,7 @@ export default function PDFManagement() {
               >
                 Refresh Status
               </button>
-            )}
-            
+            )}       
             {processingStatus.status === 'SUCCEEDED' && processingStatus.output && (
               <div className="mt-4 p-4 bg-gray-50 rounded-md">
                 <h3 className="text-md font-medium mb-2">Processing Results:</h3>
