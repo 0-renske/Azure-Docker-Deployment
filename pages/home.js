@@ -1,3 +1,4 @@
+import React from 'react';
 import More from "./More";
 import Free from "./free";
 import Dolphin from "./dolphin";
