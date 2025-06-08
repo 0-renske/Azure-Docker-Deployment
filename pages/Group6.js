@@ -1,3 +1,4 @@
+import React from 'react';
 import Login from './login';
 import Link from 'next/link';
 
