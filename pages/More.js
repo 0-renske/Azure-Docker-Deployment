@@ -1,4 +1,4 @@
-
+import React from 'react';
 export default function More() {
   return (
     <div className="bg-gray-50 rounded-lg p-6">
