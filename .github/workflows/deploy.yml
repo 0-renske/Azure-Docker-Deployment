@@ -31,6 +31,9 @@ jobs:
         env:
           NODE_ENV: development
 
+      - name: Run unit tests
+        run: npm test
+
       - name: Build app
         run: npm run build
 
