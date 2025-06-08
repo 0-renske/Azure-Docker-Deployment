@@ -1,3 +1,4 @@
+import React from 'react';
 export default function Payment(){
     async function handlePay() {
         alert("Pay me now!!!, I am hungry")
