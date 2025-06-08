@@ -452,7 +452,6 @@ export default function DatabaseManagement() {
             </div>
           )}
 
-          {/* API Key - Only for Pinecone */}
           {formData.engine === 'Pinecone' && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -492,7 +491,6 @@ export default function DatabaseManagement() {
             </div>
           )}
 
-          {/* Storage */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Storage (GB) *
@@ -512,14 +510,12 @@ export default function DatabaseManagement() {
             </p>
           </div>
 
-          {/* Error message */}
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded text-red-600 text-sm">
               {error}
             </div>
           )}
 
-          {/* Submit button */}
           <button
             type="submit"
             disabled={creating}
@@ -530,7 +526,6 @@ export default function DatabaseManagement() {
         </form>
       </div>
 
-      {/* User's Databases */}
       <div className="bg-white shadow-md rounded-lg p-6">
         <h2 className="text-xl font-semibold mb-4">Your Databases</h2>
         
