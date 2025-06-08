@@ -1,7 +1,7 @@
 
 const API_KEY = process.env.DATABASE_API_KEY;
 const API_BASE_URL = process.env.DATABASE_API_BASE_URL || 'https://v92qgjfo7l.execute-api.eu-central-1.amazonaws.com/prod';
-const DELETE_API_URL = `${API_BASE_URL}/delete-database`;
+const DELETE_API_URL = `${API_BASE_URL}/cleanup-database`;
 
 if (!API_KEY) {
   console.error('DATABASE_API_KEY environment variable is not set');
