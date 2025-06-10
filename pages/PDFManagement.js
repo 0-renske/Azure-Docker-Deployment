@@ -320,7 +320,7 @@ export default function PDFUploadManager() {
             <span className="font-semibold">No databases available.</span> You need to create and complete at least one database before uploading PDFs.
           </p>
           <button
-            onClick={() => router.push('/database-management')}
+            onClick={() => router.push('/DatabaseManagement')}
             className="mt-2 bg-yellow-600 text-white px-3 py-1 rounded text-sm hover:bg-yellow-700"
           >
             Go to Database Management
