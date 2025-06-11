@@ -18,7 +18,7 @@ export default function Dashboard() {
       setLoading(false);
       
       if (!currentUser) {
-        router.replace('/login');
+        router.replace('/Group6');
       }
     });
 
@@ -42,7 +42,7 @@ export default function Dashboard() {
           <h2 className="text-xl font-semibold text-red-800 mb-2">Authentication Required</h2>
           <p className="text-red-600 mb-4">You must be logged in to access the dashboard.</p>
           <button
-            onClick={() => router.push('/Group6')}
+            onClick={() => router.push('/login')}
             className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
           >
             Go to Login
@@ -54,11 +54,14 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Navigation Header */}
       <nav className="bg-white shadow-sm border-b">
         <div className="container mx-auto px-4">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-8">
               <h1 className="text-xl font-bold text-gray-900">Group66 Dashboard</h1>
+              
+              {/* Tab Navigation */}
               <div className="flex space-x-1">
                 <button
                   onClick={() => setActiveTab('database')}
@@ -81,8 +84,22 @@ export default function Dashboard() {
                 >
                   PDF Upload & Embeddings
                 </button>
+                
+                {/* Future tabs can be added here */}
+                {/* <button
+                  onClick={() => setActiveTab('analytics')}
+                  className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                    activeTab === 'analytics'
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                  }`}
+                >
+                  Analytics
+                </button> */}
               </div>
             </div>
+            
+            {/* User Info and Logout */}
             <div className="flex items-center space-x-4">
               <span className="text-sm text-gray-600">
                 Welcome, {user?.email || 'User'}
@@ -97,10 +114,14 @@ export default function Dashboard() {
           </div>
         </div>
       </nav>
+
+      {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         {activeTab === 'database' && <DatabaseManagement />}
         {activeTab === 'pdf' && <PDFUploadManager />}
       </main>
+
+      {/* Footer */}
       <footer className="bg-white border-t mt-auto">
         <div className="container mx-auto px-4 py-6 text-center text-gray-500 text-sm">
           <p>© {new Date().getFullYear()} Group66. Katchow :)</p>

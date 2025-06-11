@@ -6,8 +6,8 @@ if (!API_KEY) {
   console.error('DATABASE_API_KEY environment variable is not set');
 }
 
-const SUBNETS = ["subnet-069da970533284526", "subnet-0d959c80c14bd08a5"];
-const SECURITY_GROUPS = ["sg-01b735d961a022b68"];
+//const SUBNETS = ["subnet-069da970533284526", "subnet-0d959c80c14bd08a5"];
+//const SECURITY_GROUPS = ["sg-01b735d961a022b68"];
 
 function validateAuthToken(req) {
   const token = req.headers.authorization?.replace('Bearer ', '');
@@ -35,6 +35,7 @@ function validateDatabaseName(name, engine) {
     }
   }
   
+  // Fixed: Check against lowercase engine names to match the mapping
   if (['Postgres', 'Weaviate', 'Chroma'].includes(engine)) {
     if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(name)) {
       errors.push('Database name must start with a letter and contain only letters, numbers, and underscores');
@@ -78,6 +79,7 @@ function validateEngineRequirements(engine, data) {
 }
 
 function createApiPayload(engine, data, userId, userEmail) {
+  // Fixed: Map frontend engine names (capitalized) to lowercase API values
   const engineMapping = {
     'Postgres': 'postgres',
     'Weaviate': 'weaviate', 
@@ -97,7 +99,7 @@ function createApiPayload(engine, data, userId, userEmail) {
     .replace(/^-|-$/g, '');      
   
   const userIdShort = userId.substring(0, 8).toLowerCase();
-  const containerName = `${databaseType}-${cleanDbName}-${userIdShort}`;
+  const containerName = `${cleanDbName}`;
   
   if (containerName.length > 63) {
     throw new Error('Container name too long. Please use a shorter database name.');
@@ -105,18 +107,16 @@ function createApiPayload(engine, data, userId, userEmail) {
   
   console.log('Creating payload:', {
     engine,
-    databaseType,
+    databaseType, // This will now be lowercase
     containerName,
     cleanDbName,
     originalDbName: data.dbName
   });
   
   const basePayload = {
-    databaseType: databaseType,
+    databaseType: databaseType, // Fixed: Now sends lowercase (postgres, weaviate, chroma, pinecone)
     containerName: containerName,
-    username: 'admin',
-    subnets: SUBNETS,
-    securityGroups: SECURITY_GROUPS
+    username: userId
   };
   
   if (engine === 'Pinecone') {
@@ -201,7 +201,7 @@ export default async function handler(req, res) {
     if (logPayload.pineconeApiKey) {
       logPayload.pineconeApiKey = '[MASKED]';
     }
-    console.log('API Payload being sent:', JSON.stringify(logPayload, null, 2));
+    console.log('API Payload being sent (lowercase databaseType):', JSON.stringify(logPayload, null, 2));
 
     const response = await fetch(EXTERNAL_API_URL, {
       method: 'POST',

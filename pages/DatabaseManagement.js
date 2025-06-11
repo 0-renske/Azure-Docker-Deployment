@@ -2,7 +2,17 @@ import React from 'react';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { onAuthStateChanged } from 'firebase/auth';
-import { collection, addDoc, query, where, orderBy, onSnapshot } from 'firebase/firestore';
+import { 
+  collection, 
+  addDoc, 
+  query, 
+  where, 
+  orderBy, 
+  onSnapshot, 
+  updateDoc, 
+  deleteDoc, 
+  doc 
+} from 'firebase/firestore';
 import { auth, db } from '../lib/firebase'; 
 
 export default function DatabaseManagement() {
@@ -11,6 +21,8 @@ export default function DatabaseManagement() {
   const [creating, setCreating] = useState(false);
   const [databases, setDatabases] = useState([]);
   const [error, setError] = useState('');
+  const [statusChecking, setStatusChecking] = useState({});
+  const [deleting, setDeleting] = useState({});
   
   const [formData, setFormData] = useState({
     engine: 'Postgres', 
@@ -19,24 +31,28 @@ export default function DatabaseManagement() {
     storage: 20,
     apiKey: '',
     environment: '',
-    region: 'us-east-1'
+    memory: '', // Optional custom memory
+    cpu: '', // Optional custom CPU
+    region: 'eu-central-1'
   });
 
   const router = useRouter();
 
+  // Authentication effect
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoading(false);
       
       if (!currentUser) {
-        router.replace('/Group6');
+        router.replace('/login');
       }
     });
 
     return () => unsubscribe();
   }, [router]);
 
+  // Database listening effect
   useEffect(() => {
     if (!user?.uid) return;
 
@@ -54,6 +70,7 @@ export default function DatabaseManagement() {
       setDatabases(databaseList);
     }, (error) => {
       console.error('Error listening to databases:', error);
+      setError('Failed to load databases. Please refresh the page.');
       setDatabases([]);
     });
 
@@ -66,37 +83,73 @@ export default function DatabaseManagement() {
       ...prev,
       [name]: value
     }));
+    // Clear error when user starts typing
+    if (error) setError('');
   };
 
   const validateForm = () => {
+    // Database name validation
     if (formData.dbName.length < 4) {
       setError('Database name must be at least 4 characters');
       return false;
     }
+    
+    if (formData.dbName.length > 16) {
+      setError('Database name must be 16 characters or less for AWS compatibility');
+      return false;
+    }
+    
     if (formData.dbName.includes(' ')) {
       setError('Database name cannot contain spaces');
       return false;
     }
     
+    // Password validation for non-Pinecone engines
     if (['Postgres', 'Weaviate', 'Chroma'].includes(formData.engine) && formData.dbPassword.length < 8) {
       setError('Password must be at least 8 characters');
       return false;
     }
     
-    if (formData.engine === 'Pinecone' && !formData.apiKey) {
-      setError('API Key is required for Pinecone');
-      return false;
-    }
-    if (formData.engine === 'Pinecone' && !formData.environment) {
-      setError('Environment is required for Pinecone');
-      return false;
+    // Pinecone-specific validation
+    if (formData.engine === 'Pinecone') {
+      if (!formData.apiKey) {
+        setError('API Key is required for Pinecone');
+        return false;
+      }
+      if (!formData.environment) {
+        setError('Environment is required for Pinecone');
+        return false;
+      }
     }
     
+    // Storage validation
     if (formData.storage < 20) {
       setError('Storage must be at least 20 GB');
       return false;
     }
+    
     return true;
+  };
+
+  const generateShortResourceName = (engine, dbName, userId) => {
+    // Create a very short identifier to stay well under 32 characters with AWS suffixes
+    const enginePrefix = {
+      'Postgres': 'pg',
+      'Weaviate': 'wv', 
+      'Chroma': 'ch',
+      'Pinecone': 'pc'
+    };
+    
+    const prefix = enginePrefix[engine] || 'db';
+    const shortUserId = userId.substring(0, 4); // Further reduced to 4 chars
+    const shortDbName = dbName.substring(0, 6); // Limit to 6 chars max
+    
+    // Format: {prefix}-{shortDbName}-{shortUserId} 
+    // Example: pg-name4-4sse = 13 chars, leaves 19 chars for AWS suffixes
+    const resourceName = `${prefix}-${shortDbName}-${shortUserId}`.toLowerCase();
+    
+    // Ensure we never exceed 20 characters for the base name
+    return resourceName.length > 20 ? resourceName.substring(0, 20) : resourceName;
   };
 
   const handleCreateDatabase = async (e) => {
@@ -121,27 +174,52 @@ export default function DatabaseManagement() {
         throw new Error('Failed to get authentication token');
       }
 
+      // Generate AWS-compliant resource name
+      const resourceName = generateShortResourceName(formData.engine, formData.dbName, user.uid);
+
+      const payload = {
+        engine: formData.engine,
+        dbName: formData.dbName,
+        dbPassword: formData.dbPassword || '',
+        storage: parseInt(formData.storage),
+        apiKey: formData.apiKey || '',
+        environment: formData.environment || '',
+        userId: user.uid,
+        userEmail: user.email,
+        // Optional custom resources if provided
+        ...(formData.memory && { memory: parseInt(formData.memory) }),
+        ...(formData.cpu && { cpu: parseInt(formData.cpu) }),
+      };
+
+      console.log('Sending payload to API:', JSON.stringify(payload, null, 2));
+
       const response = await fetch('/api/create-database', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${idToken}`,
         },
-        body: JSON.stringify({
-          engine: formData.engine,
-          dbName: formData.dbName,
-          dbPassword: formData.dbPassword || '',
-          storage: parseInt(formData.storage),
-          apiKey: formData.apiKey || '',
-          environment: formData.environment || '',
-          region: formData.region || 'us-east-1',
-          userId: user.uid,
-          userEmail: user.email,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ message: 'Unknown error occurred' }));
+        
+        console.error('API Error Response:', {
+          status: response.status,
+          statusText: response.statusText,
+          errorData: errorData
+        });
+        
+        // Handle specific AWS infrastructure errors
+        if (errorData.message && errorData.message.includes('Listener') && errorData.message.includes('not found')) {
+          throw new Error('AWS Infrastructure Error: The load balancer listener is missing or deleted. This is a backend infrastructure issue that needs to be fixed by recreating the Network Load Balancer.');
+        }
+        
+        if (errorData.message && errorData.message.includes('Target group name') && errorData.message.includes('cannot be longer')) {
+          throw new Error('Resource name too long. Please use a shorter database name.');
+        }
+        
         throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
       }
 
@@ -151,6 +229,7 @@ export default function DatabaseManagement() {
         throw new Error('Invalid response from server');
       }
 
+      // Save to Firestore with the API response data
       await addDoc(collection(db, 'user_databases'), {
         userId: user.uid,
         userEmail: user.email,
@@ -160,11 +239,14 @@ export default function DatabaseManagement() {
         region: formData.region,
         executionId: result.executionId,
         deploymentId: result.deploymentId,
-        containerName: result.containerName,
+        containerName: result.containerName || resourceName,
+        resourceName: resourceName,
+        estimatedCompletionTime: result.estimatedCompletionTime,
         status: 'CREATING',
         createdAt: new Date().toISOString(),
       });
 
+      // Reset form
       setFormData({
         engine: 'Postgres',
         dbName: '',
@@ -172,7 +254,9 @@ export default function DatabaseManagement() {
         storage: 20,
         apiKey: '',
         environment: '',
-        region: 'us-east-1'
+        memory: '',
+        cpu: '',
+        region: 'eu-central-1'
       });
 
       alert('Database creation started successfully!');
@@ -190,6 +274,8 @@ export default function DatabaseManagement() {
       alert('Cannot check status: missing required information');
       return;
     }
+
+    setStatusChecking(prev => ({ ...prev, [database.id]: true }));
 
     try {
       const idToken = await user.getIdToken();
@@ -209,7 +295,7 @@ export default function DatabaseManagement() {
           databaseId: database.id || '',
           userId: user.uid,
           engine: database.engine || '',
-          containerName: database.containerName || `${database.engine?.toLowerCase()}-${database.dbName}-${user.uid.substring(0, 8)}`, // Include container name
+          containerName: database.containerName || database.resourceName || `${database.engine?.toLowerCase()}-${database.dbName}-${user.uid.substring(0, 8)}`,
         }),
       });
 
@@ -225,17 +311,21 @@ export default function DatabaseManagement() {
       }
       
       console.log('Database status:', statusData);
-      if (statusData.userFriendlyStatus) {
-        const message = `Database Status: ${statusData.userFriendlyStatus}`;
-        const details = statusData.estimatedTimeRemaining ? `\n${statusData.estimatedTimeRemaining}` : '';
-        const source = statusData.statusSource ? `\n(Source: ${statusData.statusSource})` : '';
-        alert(message + details + source);
-      } else {
-        alert(`Database Status: ${statusData.status || 'Creating'}`);
+      
+      let message = `Database Status: ${statusData.userFriendlyStatus || statusData.status || 'Creating'}`;
+      if (statusData.estimatedTimeRemaining) {
+        message += `\n${statusData.estimatedTimeRemaining}`;
       }
+      if (statusData.statusSource) {
+        message += `\n(Source: ${statusData.statusSource})`;
+      }
+      
+      alert(message);
     } catch (error) {
       console.error('Error checking database status:', error);
       alert(`Failed to check database status: ${error.message}`);
+    } finally {
+      setStatusChecking(prev => ({ ...prev, [database.id]: false }));
     }
   };
 
@@ -248,12 +338,15 @@ export default function DatabaseManagement() {
       return;
     }
 
+    setDeleting(prev => ({ ...prev, [database.id]: true }));
+
     try {
       const idToken = await user.getIdToken();
       
       if (!idToken) {
         throw new Error('Failed to get authentication token');
       }
+      
       console.log('Marking database as deleting in Firestore...');
       await updateDoc(doc(db, 'user_databases', database.id), {
         status: 'DELETING',
@@ -269,7 +362,7 @@ export default function DatabaseManagement() {
         },
         body: JSON.stringify({
           databaseId: database.id,
-          containerName: database.containerName || `${database.engine?.toLowerCase()}-${database.dbName}-${user.uid.substring(0, 8)}`,
+          containerName: database.containerName || database.resourceName || `${database.engine?.toLowerCase()}-${database.dbName}-${user.uid.substring(0, 8)}`,
           userId: user.uid,
           engine: database.engine,
         }),
@@ -301,6 +394,8 @@ export default function DatabaseManagement() {
             deletionId: result.deletionId,
             deletionStarted: new Date().toISOString(),
           });
+          
+          // Auto-cleanup after delay
           setTimeout(async () => {
             try {
               console.log('Auto-removing deleted database from Firestore after delay...');
@@ -329,6 +424,8 @@ export default function DatabaseManagement() {
       } catch (revertError) {
         console.warn('Could not revert database status:', revertError);
       }
+    } finally {
+      setDeleting(prev => ({ ...prev, [database.id]: false }));
     }
   };
 
@@ -349,6 +446,7 @@ export default function DatabaseManagement() {
       alert(`Failed to remove record: ${error.message}`);
     }
   };
+
   if (loading) {
     return (
       <div className="container mx-auto px-4 py-8 max-w-4xl">
@@ -358,6 +456,7 @@ export default function DatabaseManagement() {
       </div>
     );
   }
+
   if (!user) {
     return (
       <div className="container mx-auto px-4 py-8 max-w-4xl">
@@ -384,6 +483,7 @@ export default function DatabaseManagement() {
       </div>
 
       <h1 className="text-2xl font-bold mb-6">Database Management</h1>
+      
       <div className="bg-white shadow-md rounded-lg p-6 mb-6">
         <h2 className="text-xl font-semibold mb-4">Create New Database</h2>
         
@@ -412,6 +512,7 @@ export default function DatabaseManagement() {
               Choose your preferred database technology
             </p>
           </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               {formData.engine === 'Pinecone' ? 'Index Name *' : 'Database Name *'}
@@ -421,16 +522,18 @@ export default function DatabaseManagement() {
               name="dbName"
               value={formData.dbName}
               onChange={handleInputChange}
-              placeholder={`Enter ${formData.engine === 'Pinecone' ? 'index' : 'database'} name (min 4 characters, no spaces)`}
+              placeholder={`Enter ${formData.engine === 'Pinecone' ? 'index' : 'database'} name (4-16 chars, no spaces)`}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               required
               minLength={4}
+              maxLength={16}
               pattern="^[^\s]+$"
             />
             <p className="text-xs text-gray-500 mt-1">
-              Must be at least 4 characters and contain no spaces
+              Must be 4-16 characters and contain no spaces (will be shortened for AWS compatibility)
             </p>
           </div>
+
           {formData.engine !== 'Pinecone' && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -453,42 +556,43 @@ export default function DatabaseManagement() {
           )}
 
           {formData.engine === 'Pinecone' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Pinecone API Key *
-              </label>
-              <input
-                type="password"
-                name="apiKey"
-                value={formData.apiKey}
-                onChange={handleInputChange}
-                placeholder="Enter your Pinecone API key"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                required
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Your Pinecone API key from the console
-              </p>
-            </div>
-          )}
-          {formData.engine === 'Pinecone' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Environment *
-              </label>
-              <input
-                type="text"
-                name="environment"
-                value={formData.environment}
-                onChange={handleInputChange}
-                placeholder="e.g., us-east-1-aws"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                required
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Your Pinecone environment name
-              </p>
-            </div>
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Pinecone API Key *
+                </label>
+                <input
+                  type="password"
+                  name="apiKey"
+                  value={formData.apiKey}
+                  onChange={handleInputChange}
+                  placeholder="Enter your Pinecone API key"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  required
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Your Pinecone API key from the console
+                </p>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Environment *
+                </label>
+                <input
+                  type="text"
+                  name="environment"
+                  value={formData.environment}
+                  onChange={handleInputChange}
+                  placeholder="e.g., us-east-1-aws"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  required
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Your Pinecone environment name
+                </p>
+              </div>
+            </>
           )}
 
           <div>
@@ -510,6 +614,44 @@ export default function DatabaseManagement() {
             </p>
           </div>
 
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Memory (MB) <span className="text-gray-500">(Optional)</span>
+              </label>
+              <input
+                type="number"
+                name="memory"
+                value={formData.memory}
+                onChange={handleInputChange}
+                placeholder="e.g., 2048"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                min={512}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Custom memory allocation
+              </p>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                CPU Units <span className="text-gray-500">(Optional)</span>
+              </label>
+              <input
+                type="number"
+                name="cpu"
+                value={formData.cpu}
+                onChange={handleInputChange}
+                placeholder="e.g., 1024"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                min={256}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Custom CPU allocation
+              </p>
+            </div>
+          </div>
+
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded text-red-600 text-sm">
               {error}
@@ -519,7 +661,7 @@ export default function DatabaseManagement() {
           <button
             type="submit"
             disabled={creating}
-            className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-400"
+            className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
           >
             {creating ? 'Creating Database...' : 'Create Database'}
           </button>
@@ -569,10 +711,10 @@ export default function DatabaseManagement() {
                   {database?.status === 'CREATING' && (
                     <button
                       onClick={() => checkDatabaseStatus(database)}
-                      className="px-3 py-2 bg-blue-500 text-white text-sm rounded hover:bg-blue-600"
-                      disabled={!database?.executionId}
+                      disabled={!database?.executionId || statusChecking[database.id]}
+                      className="px-3 py-2 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
                     >
-                      Check Status
+                      {statusChecking[database.id] ? 'Checking...' : 'Check Status'}
                     </button>
                   )}
 
@@ -580,9 +722,10 @@ export default function DatabaseManagement() {
                     <>
                       <button
                         onClick={() => handleDeleteDatabase(database)}
-                        className="px-3 py-2 bg-red-500 text-white text-sm rounded hover:bg-red-600"
+                        disabled={deleting[database.id]}
+                        className="px-3 py-2 bg-red-500 text-white text-sm rounded hover:bg-red-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
                       >
-                        Delete Database
+                        {deleting[database.id] ? 'Deleting...' : 'Delete Database'}
                       </button>
                       <button
                         onClick={() => handleRemoveRecord(database)}
@@ -612,9 +755,10 @@ export default function DatabaseManagement() {
                     <>
                       <button
                         onClick={() => handleDeleteDatabase(database)}
-                        className="px-3 py-2 bg-red-500 text-white text-sm rounded hover:bg-red-600"
+                        disabled={deleting[database.id]}
+                        className="px-3 py-2 bg-red-500 text-white text-sm rounded hover:bg-red-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
                       >
-                        Try Delete
+                        {deleting[database.id] ? 'Deleting...' : 'Try Delete'}
                       </button>
                       <button
                         onClick={() => handleRemoveRecord(database)}
@@ -635,7 +779,7 @@ export default function DatabaseManagement() {
                   </div>
                 )}
               </div>
-            )) || []}
+            ))}
           </div>
         )}
       </div>
