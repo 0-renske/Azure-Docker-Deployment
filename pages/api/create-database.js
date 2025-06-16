@@ -35,7 +35,6 @@ function validateDatabaseName(name, engine) {
     }
   }
   
-  // Fixed: Check against lowercase engine names to match the mapping
   if (['Postgres', 'Weaviate', 'Chroma'].includes(engine)) {
     if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(name)) {
       errors.push('Database name must start with a letter and contain only letters, numbers, and underscores');
@@ -79,7 +78,6 @@ function validateEngineRequirements(engine, data) {
 }
 
 function createApiPayload(engine, data, userId, userEmail) {
-  // Fixed: Map frontend engine names (capitalized) to lowercase API values
   const engineMapping = {
     'Postgres': 'postgres',
     'Weaviate': 'weaviate', 
@@ -107,14 +105,14 @@ function createApiPayload(engine, data, userId, userEmail) {
   
   console.log('Creating payload:', {
     engine,
-    databaseType, // This will now be lowercase
+    databaseType, 
     containerName,
     cleanDbName,
     originalDbName: data.dbName
   });
   
   const basePayload = {
-    databaseType: databaseType, // Fixed: Now sends lowercase (postgres, weaviate, chroma, pinecone)
+    databaseType: databaseType, 
     containerName: containerName,
     username: userId
   };

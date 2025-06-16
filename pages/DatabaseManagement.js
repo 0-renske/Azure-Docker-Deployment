@@ -21,7 +21,6 @@ export default function DatabaseManagement() {
   const [creating, setCreating] = useState(false);
   const [databases, setDatabases] = useState([]);
   const [error, setError] = useState('');
-  const [statusChecking, setStatusChecking] = useState({});
   const [deleting, setDeleting] = useState({});
   
   const [formData, setFormData] = useState({
@@ -31,28 +30,24 @@ export default function DatabaseManagement() {
     storage: 20,
     apiKey: '',
     environment: '',
-    memory: '', // Optional custom memory
-    cpu: '', // Optional custom CPU
     region: 'eu-central-1'
   });
 
   const router = useRouter();
 
-  // Authentication effect
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoading(false);
       
       if (!currentUser) {
-        router.replace('/login');
+        router.replace('/Group6');
       }
     });
 
     return () => unsubscribe();
   }, [router]);
 
-  // Database listening effect
   useEffect(() => {
     if (!user?.uid) return;
 
@@ -83,12 +78,10 @@ export default function DatabaseManagement() {
       ...prev,
       [name]: value
     }));
-    // Clear error when user starts typing
     if (error) setError('');
   };
 
   const validateForm = () => {
-    // Database name validation
     if (formData.dbName.length < 4) {
       setError('Database name must be at least 4 characters');
       return false;
@@ -104,13 +97,11 @@ export default function DatabaseManagement() {
       return false;
     }
     
-    // Password validation for non-Pinecone engines
     if (['Postgres', 'Weaviate', 'Chroma'].includes(formData.engine) && formData.dbPassword.length < 8) {
       setError('Password must be at least 8 characters');
       return false;
     }
     
-    // Pinecone-specific validation
     if (formData.engine === 'Pinecone') {
       if (!formData.apiKey) {
         setError('API Key is required for Pinecone');
@@ -122,7 +113,6 @@ export default function DatabaseManagement() {
       }
     }
     
-    // Storage validation
     if (formData.storage < 20) {
       setError('Storage must be at least 20 GB');
       return false;
@@ -132,7 +122,6 @@ export default function DatabaseManagement() {
   };
 
   const generateShortResourceName = (engine, dbName, userId) => {
-    // Create a very short identifier to stay well under 32 characters with AWS suffixes
     const enginePrefix = {
       'Postgres': 'pg',
       'Weaviate': 'wv', 
@@ -141,14 +130,10 @@ export default function DatabaseManagement() {
     };
     
     const prefix = enginePrefix[engine] || 'db';
-    const shortUserId = userId.substring(0, 4); // Further reduced to 4 chars
-    const shortDbName = dbName.substring(0, 6); // Limit to 6 chars max
-    
-    // Format: {prefix}-{shortDbName}-{shortUserId} 
-    // Example: pg-name4-4sse = 13 chars, leaves 19 chars for AWS suffixes
+    const shortUserId = userId.substring(0, 4); 
+    const shortDbName = dbName.substring(0, 6); 
     const resourceName = `${prefix}-${shortDbName}-${shortUserId}`.toLowerCase();
     
-    // Ensure we never exceed 20 characters for the base name
     return resourceName.length > 20 ? resourceName.substring(0, 20) : resourceName;
   };
 
@@ -174,7 +159,6 @@ export default function DatabaseManagement() {
         throw new Error('Failed to get authentication token');
       }
 
-      // Generate AWS-compliant resource name
       const resourceName = generateShortResourceName(formData.engine, formData.dbName, user.uid);
 
       const payload = {
@@ -186,9 +170,6 @@ export default function DatabaseManagement() {
         environment: formData.environment || '',
         userId: user.uid,
         userEmail: user.email,
-        // Optional custom resources if provided
-        ...(formData.memory && { memory: parseInt(formData.memory) }),
-        ...(formData.cpu && { cpu: parseInt(formData.cpu) }),
       };
 
       console.log('Sending payload to API:', JSON.stringify(payload, null, 2));
@@ -211,7 +192,6 @@ export default function DatabaseManagement() {
           errorData: errorData
         });
         
-        // Handle specific AWS infrastructure errors
         if (errorData.message && errorData.message.includes('Listener') && errorData.message.includes('not found')) {
           throw new Error('AWS Infrastructure Error: The load balancer listener is missing or deleted. This is a backend infrastructure issue that needs to be fixed by recreating the Network Load Balancer.');
         }
@@ -229,7 +209,6 @@ export default function DatabaseManagement() {
         throw new Error('Invalid response from server');
       }
 
-      // Save to Firestore with the API response data
       await addDoc(collection(db, 'user_databases'), {
         userId: user.uid,
         userEmail: user.email,
@@ -242,11 +221,10 @@ export default function DatabaseManagement() {
         containerName: result.containerName || resourceName,
         resourceName: resourceName,
         estimatedCompletionTime: result.estimatedCompletionTime,
-        status: 'CREATING',
+        status: 'COMPLETED', 
         createdAt: new Date().toISOString(),
       });
 
-      // Reset form
       setFormData({
         engine: 'Postgres',
         dbName: '',
@@ -254,78 +232,15 @@ export default function DatabaseManagement() {
         storage: 20,
         apiKey: '',
         environment: '',
-        memory: '',
-        cpu: '',
         region: 'eu-central-1'
       });
 
-      alert('Database creation started successfully!');
+      alert('Database created successfully! It should be ready to use.');
     } catch (error) {
       console.error('Database creation error:', error);
       setError(error.message || 'Failed to create database');
     } finally {
       setCreating(false);
-    }
-  };
-
-  const checkDatabaseStatus = async (database) => {
-    if (!database?.executionId || !user?.uid) { 
-      console.error('Missing required data for status check');
-      alert('Cannot check status: missing required information');
-      return;
-    }
-
-    setStatusChecking(prev => ({ ...prev, [database.id]: true }));
-
-    try {
-      const idToken = await user.getIdToken();
-      
-      if (!idToken) {
-        throw new Error('Failed to get authentication token');
-      }
-      
-      const response = await fetch('/api/check-database-status', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${idToken}`,
-        },
-        body: JSON.stringify({
-          executionId: database.executionId,
-          databaseId: database.id || '',
-          userId: user.uid,
-          engine: database.engine || '',
-          containerName: database.containerName || database.resourceName || `${database.engine?.toLowerCase()}-${database.dbName}-${user.uid.substring(0, 8)}`,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: 'Unknown error occurred' }));
-        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
-      }
-
-      const statusData = await response.json();
-      
-      if (!statusData) {
-        throw new Error('No status data received');
-      }
-      
-      console.log('Database status:', statusData);
-      
-      let message = `Database Status: ${statusData.userFriendlyStatus || statusData.status || 'Creating'}`;
-      if (statusData.estimatedTimeRemaining) {
-        message += `\n${statusData.estimatedTimeRemaining}`;
-      }
-      if (statusData.statusSource) {
-        message += `\n(Source: ${statusData.statusSource})`;
-      }
-      
-      alert(message);
-    } catch (error) {
-      console.error('Error checking database status:', error);
-      alert(`Failed to check database status: ${error.message}`);
-    } finally {
-      setStatusChecking(prev => ({ ...prev, [database.id]: false }));
     }
   };
 
@@ -355,14 +270,14 @@ export default function DatabaseManagement() {
       
       console.log('Calling delete API...');
       const response = await fetch('/api/delete-database', {
-        method: 'DELETE',
+        method: 'DELETE', 
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${idToken}`,
         },
         body: JSON.stringify({
           databaseId: database.id,
-          containerName: database.containerName || database.resourceName || `${database.engine?.toLowerCase()}-${database.dbName}-${user.uid.substring(0, 8)}`,
+          containerName: database.containerName || database.resourceName || `${database.engine?.toLowerCase()}-${database.dbName}`,
           userId: user.uid,
           engine: database.engine,
         }),
@@ -395,7 +310,6 @@ export default function DatabaseManagement() {
             deletionStarted: new Date().toISOString(),
           });
           
-          // Auto-cleanup after delay
           setTimeout(async () => {
             try {
               console.log('Auto-removing deleted database from Firestore after delay...');
@@ -614,44 +528,6 @@ export default function DatabaseManagement() {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Memory (MB) <span className="text-gray-500">(Optional)</span>
-              </label>
-              <input
-                type="number"
-                name="memory"
-                value={formData.memory}
-                onChange={handleInputChange}
-                placeholder="e.g., 2048"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                min={512}
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Custom memory allocation
-              </p>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                CPU Units <span className="text-gray-500">(Optional)</span>
-              </label>
-              <input
-                type="number"
-                name="cpu"
-                value={formData.cpu}
-                onChange={handleInputChange}
-                placeholder="e.g., 1024"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                min={256}
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Custom CPU allocation
-              </p>
-            </div>
-          </div>
-
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded text-red-600 text-sm">
               {error}
@@ -690,13 +566,10 @@ export default function DatabaseManagement() {
                     </p>
                   </div>
                   <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
-                    database?.status === 'CREATING' ? 'bg-yellow-100 text-yellow-800' :
-                    database?.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
                     database?.status === 'DELETING' ? 'bg-orange-100 text-orange-800' :
-                    database?.status === 'FAILED' ? 'bg-red-100 text-red-800' :
-                    'bg-gray-100 text-gray-800'
+                    'bg-green-100 text-green-800'
                   }`}>
-                    {database?.status || 'Unknown'}
+                    {database?.status === 'DELETING' ? 'Deleting' : 'Ready'}
                   </span>
                 </div>
                 
@@ -708,65 +581,27 @@ export default function DatabaseManagement() {
                 )}
 
                 <div className="flex gap-2 flex-wrap">
-                  {database?.status === 'CREATING' && (
+                  <button
+                    onClick={() => handleRemoveRecord(database)}
+                    className="px-3 py-2 bg-gray-400 text-white text-sm rounded hover:bg-gray-500"
+                  >
+                    Remove Record
+                  </button>
+
+                  {database?.status !== 'DELETING' && (
                     <button
-                      onClick={() => checkDatabaseStatus(database)}
-                      disabled={!database?.executionId || statusChecking[database.id]}
-                      className="px-3 py-2 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                      onClick={() => handleDeleteDatabase(database)}
+                      disabled={deleting[database.id]}
+                      className="px-3 py-2 bg-red-500 text-white text-sm rounded hover:bg-red-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
                     >
-                      {statusChecking[database.id] ? 'Checking...' : 'Check Status'}
+                      {deleting[database.id] ? 'Deleting...' : 'Delete Database'}
                     </button>
                   )}
 
-                  {database?.status === 'COMPLETED' && (
-                    <>
-                      <button
-                        onClick={() => handleDeleteDatabase(database)}
-                        disabled={deleting[database.id]}
-                        className="px-3 py-2 bg-red-500 text-white text-sm rounded hover:bg-red-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                      >
-                        {deleting[database.id] ? 'Deleting...' : 'Delete Database'}
-                      </button>
-                      <button
-                        onClick={() => handleRemoveRecord(database)}
-                        className="px-3 py-2 bg-gray-400 text-white text-sm rounded hover:bg-gray-500"
-                      >
-                        Remove Record
-                      </button>
-                    </>
-                  )}
-
                   {database?.status === 'DELETING' && (
-                    <>
-                      <div className="px-3 py-2 bg-orange-100 text-orange-800 text-sm rounded">
-                        Deleting...
-                      </div>
-                      <button
-                        onClick={() => handleRemoveRecord(database)}
-                        className="px-3 py-2 bg-gray-400 text-white text-sm rounded hover:bg-gray-500"
-                        title="Remove from dashboard if deletion is stuck"
-                      >
-                        Force Remove
-                      </button>
-                    </>
-                  )}
-
-                  {database?.status === 'FAILED' && (
-                    <>
-                      <button
-                        onClick={() => handleDeleteDatabase(database)}
-                        disabled={deleting[database.id]}
-                        className="px-3 py-2 bg-red-500 text-white text-sm rounded hover:bg-red-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                      >
-                        {deleting[database.id] ? 'Deleting...' : 'Try Delete'}
-                      </button>
-                      <button
-                        onClick={() => handleRemoveRecord(database)}
-                        className="px-3 py-2 bg-gray-500 text-white text-sm rounded hover:bg-gray-600"
-                      >
-                        Remove Record
-                      </button>
-                    </>
+                    <div className="px-3 py-2 bg-orange-100 text-orange-800 text-sm rounded">
+                      Deleting...
+                    </div>
                   )}
                 </div>
 

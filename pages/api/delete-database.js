@@ -1,4 +1,3 @@
-
 const API_KEY = process.env.DATABASE_API_KEY;
 const API_BASE_URL = process.env.DATABASE_API_BASE_URL || 'https://v92qgjfo7l.execute-api.eu-central-1.amazonaws.com/prod';
 const DELETE_API_URL = `${API_BASE_URL}/cleanup-database`;
@@ -107,20 +106,27 @@ export default async function handler(req, res) {
       timestamp: new Date().toISOString(),
     });
 
-    const deletePayload = {
-      containerName: containerName,
-      userId: userId,
-      databaseId: databaseId,
-      ...(engine && { engine: engine.toLowerCase() })
+    const engineMapping = {
+      'Postgres': 'postgres',
+      'Weaviate': 'weaviate',
+      'Chroma': 'chroma', 
+      'Pinecone': 'pinecone'
     };
 
-    console.log('Delete API Payload:', {
-      ...deletePayload,
-      userId: deletePayload.userId.substring(0, 8) + '...'
+    const deletePayload = {
+      databaseType: engineMapping[engine] || engine.toLowerCase(), 
+      containerName: containerName,
+      confirmDeletion: true 
+    };
+
+    console.log('Delete API Payload (matching curl format):', {
+      databaseType: deletePayload.databaseType,
+      containerName: deletePayload.containerName,
+      confirmDeletion: deletePayload.confirmDeletion
     });
 
     const response = await fetch(DELETE_API_URL, {
-      method: 'DELETE',
+      method: 'POST', 
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': API_KEY,
@@ -171,7 +177,12 @@ export default async function handler(req, res) {
         message: 'Authentication required' 
       });
     }
-    if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED' || error.message.includes('fetch failed')) {
+    
+    if (error.code === 'ENOTFOUND' || 
+        error.code === 'ECONNREFUSED' || 
+        error.code === 'ECONNRESET' ||
+        error.message.includes('fetch failed') ||
+        error.message.includes('network timeout')) {
       console.warn('Delete API not available or unreachable, performing soft delete');
       return res.status(200).json({
         success: true,
@@ -201,7 +212,7 @@ export default async function handler(req, res) {
       success: false,
       message: 'Failed to delete database',
       error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
-      containerName: req.body.containerName
+      containerName: req.body.containerName || 'unknown'
     });
   }
 }
